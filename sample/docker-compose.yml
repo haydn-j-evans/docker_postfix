@@ -7,3 +7,7 @@ services:
       - "./sample.env"
     expose:
       - "587"
+    volumes:
+      - /git/data/certs:/etc/postfix/certs
+    image: 
+      - postfix:latest
