@@ -1,0 +1,9 @@
+version: "3.7"
+services:
+  smtp-relay:
+    build: ../..
+    restart: always
+    env_file:
+      - "./sample.env"
+    expose:
+      - "587"
