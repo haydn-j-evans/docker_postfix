@@ -251,6 +251,10 @@ This means:
 I strongly suggest using a service such as [dkimvalidator](https://dkimvalidator.com/) to make sure your keys are set up properly
 and your DNS server is serving them with the correct records.
 
+## Adding TLS support to Container
+
+Simply place your TLS certificate and Key into a mountable folder, and then mount that into the container. The startup script will automatically detect the certificate and Key and will enable TLS support automatically.
+
 ## Extending the image
 
 ### Using custom init scripts
