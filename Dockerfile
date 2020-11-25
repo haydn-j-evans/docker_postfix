@@ -24,9 +24,9 @@ COPY       /scripts/*.sh                 /
 
 # Copy and update Centogene Root Certificates
 
-RUN curl http://crl.centogene.internal/aia/Root-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Root-Centogene-CA.crt
-RUN curl http://crl.centogene.internal/aia/Issu1-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Issu1-Centogene-CA.crt
-RUN curl http://crl.centogene.internal/aia/Issu2-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Issu2-Centogene-CA.crt
+RUN curl http://crl.centogene.com/aia/Root-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Root-Centogene-CA.crt
+RUN curl http://crl.centogene.com/aia/Issu1-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Issu1-Centogene-CA.crt
+RUN curl http://crl.centogene.com/aia/Issu2-Centogene-CA-PEM.crt >> /usr/local/share/ca-certificates/Issu2-Centogene-CA.crt
 
 RUN update-ca-certificates
 
