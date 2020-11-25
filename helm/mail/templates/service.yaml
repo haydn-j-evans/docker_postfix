@@ -1,0 +1,22 @@
+{{- $chart := "mail" -}}
+{{- $fullName := include (print $chart ".fullname") . -}}
+{{- $labels := include (print $chart ".labels") . -}}
+{{- $selectorLabels := include (print $chart ".selectorLabels") . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName | quote }}
+  labels:
+    {{- $labels | nindent 4 }}
+    {{- with .Values.service.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+  annotations:
+    {{- with .Values.service.annotations }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: smtp
+      protocol: TCP
+      name: smtp
+  selector:
+    {{- $selectorLabels | nindent 4 }}

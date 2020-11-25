@@ -35,7 +35,7 @@ reown_folders() {
 }
 
 postfix_disable_utf8() {
-	postconf -e smtputf8_enable=no
+	do_postconf -e smtputf8_enable=no
 }
 
 postfix_create_aliases() {
@@ -43,15 +43,15 @@ postfix_create_aliases() {
 }
 
 postfix_disable_local_mail_delivery() {
-	postconf -e mydestination=
+	do_postconf -e mydestination=
 }
 
 postfix_disable_domain_relays() {
-	postconf -e relay_domains=
+	do_postconf -e relay_domains=
 }
 
 postfix_increase_header_size_limit() {
-	postconf -e "header_size_limit=4096000"
+	do_postconf -e "header_size_limit=4096000"
 }
 
 postfix_restrict_message_size() {
@@ -69,14 +69,18 @@ postfix_restrict_message_size() {
 }
 
 postfix_reject_invalid_helos() {
-	postconf -e smtpd_delay_reject=yes
-	postconf -e smtpd_helo_required=yes
-	postconf -e "smtpd_helo_restrictions=permit_mynetworks,reject_invalid_helo_hostname,permit"
-	postconf -e "smtpd_sender_restrictions=permit_mynetworks"
+	do_postconf -e smtpd_delay_reject=yes
+	do_postconf -e smtpd_helo_required=yes
+	# Fast reject -- reject straight away when the client is connecting
+	do_postconf -e "smtpd_client_restrictions=permit_mynetworks,reject"
+	# Reject / accept on EHLO / HELO command
+	do_postconf -e "smtpd_helo_restrictions=permit_mynetworks,reject_invalid_helo_hostname,permit"
+	# Delayed reject -- reject on MAIL FROM command. Not strictly neccessary to have both, but doesn't hurt
+	do_postconf -e "smtpd_sender_restrictions=permit_mynetworks,reject"
 }
 
 postfix_set_hostname() {
-	postconf -# myhostname
+	do_postconf -# myhostname
 	if [[ -z "$POSTFIX_myhostname" ]]; then
 		POSTFIX_myhostname="${HOSTNAME}"
 	fi
@@ -85,38 +89,92 @@ postfix_set_hostname() {
 postfix_set_relay_tls_level() {
 	if [ -z "$RELAYHOST_TLS_LEVEL" ]; then
 		info "Setting smtp_tls_security_level: ${emphasis}may${reset}"
-		postconf -e "smtp_tls_security_level=may"
+		do_postconf -e "smtp_tls_security_level=may"
 	else
 		notice "Setting smtp_tls_security_level: ${emphasis}$RELAYHOST_TLS_LEVEL${reset}"
-		postconf -e "smtp_tls_security_level=$RELAYHOST_TLS_LEVEL"
+		do_postconf -e "smtp_tls_security_level=$RELAYHOST_TLS_LEVEL"
 	fi
 }
 
 postfix_setup_relayhost() {
 	if [ ! -z "$RELAYHOST" ]; then
 		noticen "Forwarding all emails to ${emphasis}$RELAYHOST${reset}"
-		postconf -e "relayhost=$RELAYHOST"
+		do_postconf -e "relayhost=$RELAYHOST"
 		# Alternately, this could be a folder, like this:
 		# smtp_tls_CApath
-		postconf -e "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt"
+		do_postconf -e "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt"
+
+		file_env 'RELAYHOST_PASSWORD'
 
 		if [ -n "$RELAYHOST_USERNAME" ] && [ -n "$RELAYHOST_PASSWORD" ]; then
 			echo -e " using username ${emphasis}$RELAYHOST_USERNAME${reset} and password ${emphasis}(redacted)${reset}."
-			echo "$RELAYHOST $RELAYHOST_USERNAME:$RELAYHOST_PASSWORD" >> /etc/postfix/sasl_passwd
+			if [[ -f /etc/postfix/sasl_passwd ]]; then
+				if ! grep -F "$RELAYHOST $RELAYHOST_USERNAME:$RELAYHOST_PASSWORD" /etc/postfix/sasl_passwd; then
+					sed -i -e "s/^$RELAYHOST .*$/d" /etc/postfix/sasl_passwd
+					echo "$RELAYHOST $RELAYHOST_USERNAME:$RELAYHOST_PASSWORD" >> /etc/postfix/sasl_passwd
+				fi
+			else
+				echo "$RELAYHOST $RELAYHOST_USERNAME:$RELAYHOST_PASSWORD" >> /etc/postfix/sasl_passwd
+			fi
 			postmap hash:/etc/postfix/sasl_passwd
-			postconf -e "smtp_sasl_auth_enable=yes"
-			postconf -e "smtp_sasl_password_maps=hash:/etc/postfix/sasl_passwd"
-			postconf -e "smtp_sasl_security_options=noanonymous"
-			postconf -e "smtp_sasl_tls_security_options=noanonymous"
+			do_postconf -e "smtp_sasl_auth_enable=yes"
+			do_postconf -e "smtp_sasl_password_maps=hash:/etc/postfix/sasl_passwd"
+			do_postconf -e "smtp_sasl_security_options=noanonymous"
+			do_postconf -e "smtp_sasl_tls_security_options=noanonymous"
 		else
 			echo -e " without any authentication. ${emphasis}Make sure your server is configured to accept emails coming from this IP.${reset}"
 		fi
 	else
 		notice "Will try to deliver emails directly to the final server. ${emphasis}Make sure your DNS is setup properly!${reset}"
-		postconf -# relayhost
-		postconf -# smtp_sasl_auth_enable
-		postconf -# smtp_sasl_password_maps
-		postconf -# smtp_sasl_security_options
+		do_postconf -# relayhost
+		do_postconf -# smtp_sasl_auth_enable
+		do_postconf -# smtp_sasl_password_maps
+		do_postconf -# smtp_sasl_security_options
+	fi
+}
+
+postfix_setup_xoauth2_pre_setup() {
+	file_env 'XOAUTH2_CLIENT_ID'
+	file_env 'XOAUTH2_SECRET'
+	if [ -n "$XOAUTH2_CLIENT_ID" ] && [ -n "$XOAUTH2_SECRET" ]; then
+		cat <<EOF > /etc/sasl-xoauth2.conf
+{
+  "client_id": "${XOAUTH2_CLIENT_ID}",
+  "client_secret": "${XOAUTH2_SECRET}",
+  "log_to_syslog_on_failure": "${XOAUTH2_SYSLOG_ON_FAILURE:-no}",
+  "log_full_trace_on_failure": "${XOAUTH2_FULL_TRACE:-no}"
+}
+EOF
+
+		if [ -z "$RELAYHOST" ] || [ -z "${RELAYHOST_USERNAME}" ]; then
+			error "You need to specify RELAYHOST and RELAYHOST_USERNAME otherwise Postfix will not run!"
+			exit 1
+		fi
+
+		export RELAYHOST_PASSWORD="/var/spool/postfix/xoauth2-tokens/${RELAYHOST_USERNAME}"
+
+		if [ ! -d "/var/spool/postfix/xoauth2-tokens" ]; then
+			mkdir -p "/var/spool/postfix/xoauth2-tokens"
+		fi
+
+		if [ ! -f "/var/spool/postfix/xoauth2-tokens/${RELAYHOST_USERNAME}" ] && [ -n "$XOAUTH2_INITIAL_ACCESS_TOKEN" ] && [ -n "$XOAUTH2_INITIAL_REFRESH_TOKEN" ]; then
+			cat <<EOF > "/var/spool/postfix/xoauth2-tokens/${RELAYHOST_USERNAME}"
+{
+	"access_token" : "${XOAUTH2_INITIAL_ACCESS_TOKEN}",
+	"refresh_token" : "${XOAUTH2_INITIAL_REFRESH_TOKEN}",
+	"expiry" : "0"
+}
+EOF
+		fi
+		chown -R postfix:root "/var/spool/postfix/xoauth2-tokens"
+	fi
+}
+
+postfix_setup_xoauth2_post_setup() {
+	if [ -n "$XOAUTH2_CLIENT_ID" ] && [ -n "$XOAUTH2_SECRET" ]; then
+		do_postconf -e 'smtp_sasl_security_options='
+		do_postconf -e 'smtp_sasl_mechanism_filter=xoauth2'
+		do_postconf -e 'smtp_tls_session_cache_database=btree:${data_directory}/smtp_scache'
 	fi
 }
 
@@ -136,7 +194,7 @@ postfix_setup_networks() {
 postfix_setup_debugging() {
 	if [ ! -z "$INBOUND_DEBUGGING" ]; then
 		notice "Enabling additional debbuging for: ${emphasis}$POSTFIX_mynetworks${reset}, as INBOUND_DEBUGGING=''${INBOUND_DEBUGGING}''"
-		postconf -e "debug_peer_list=$POSTFIX_mynetworks"
+		do_postconf -e "debug_peer_list=$POSTFIX_mynetworks"
 
 		sed -i -E 's/^[ \t]*#?[ \t]*LogWhy[ \t]*.+$/LogWhy                  yes/' /etc/opendkim/opendkim.conf
 		if ! egrep -q '^LogWhy' /etc/opendkim/opendkim.conf; then
@@ -166,10 +224,10 @@ postfix_setup_sender_domains() {
 		echo
 		postmap $allowed_senders
 
-		postconf -e "smtpd_recipient_restrictions=reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
+		do_postconf -e "smtpd_recipient_restrictions=reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
 
 		# Since we are behind closed doors, let's just permit all relays.
-		postconf -e "smtpd_relay_restrictions=permit"
+		do_postconf -e "smtpd_relay_restrictions=permit"
 	elif [ -z "$ALLOW_EMPTY_SENDER_DOMAINS" ]; then
 		error "You need to specify ALLOWED_SENDER_DOMAINS otherwise Postfix will not run!"
 		exit 1
@@ -179,8 +237,8 @@ postfix_setup_sender_domains() {
 postfix_setup_masquarading() {
 	if [ ! -z "$MASQUERADED_DOMAINS" ]; then
 		notice "Setting up address masquerading: ${emphasis}$MASQUERADED_DOMAINS${reset}"
-		postconf -e "masquerade_domains = $MASQUERADED_DOMAINS"
-		postconf -e "local_header_rewrite_clients = static:all"
+		do_postconf -e "masquerade_domains = $MASQUERADED_DOMAINS"
+		do_postconf -e "local_header_rewrite_clients = static:all"
 	fi
 }
 
@@ -201,7 +259,7 @@ postfix_setup_header_checks() {
 
 		if [ -f "$FILE" ]; then
 			notice "Setting up ${emphasis}smtp_header_checks${reset} to ${emphasis}$FORMAT:$FILE${reset}"
-			postconf -e "smtp_header_checks=$FORMAT:$FILE"
+			do_postconf -e "smtp_header_checks=$FORMAT:$FILE"
 		else
 			fatal "File ${emphasis}$FILE${reset} cannot be found. Please make sure your SMTP_HEADER_CHECKS variable points to the right file. Startup aborted."
 			exit 2
@@ -214,16 +272,16 @@ postfix_enable_tls()  {
 	if [[ -n "$(find /etc/postfix/certs -iname *.crt)" && -n "$(find /etc/postfix/certs -iname *.key)" ]]; then
   		# /etc/postfix/main.cf
   		info "Found certificate and key! Enabling TLS"
-		postconf -e smtpd_tls_cert_file=$(find /etc/postfix/certs -iname *.crt)
-  		postconf -e smtpd_tls_key_file=$(find /etc/postfix/certs -iname *.key)
-    	postconf -e smtpd_tls_security_level=encrypt
-    	postconf -e smtpd_tls_mandatory_protocols=">=TLSv1.2"
+		do_postconf -e smtpd_tls_cert_file=$(find /etc/postfix/certs -iname *.crt)
+  		do_postconf -e smtpd_tls_key_file=$(find /etc/postfix/certs -iname *.key)
+    	do_postconf -e smtpd_tls_security_level=encrypt
+    	do_postconf -e smtpd_tls_mandatory_protocols=">=TLSv1.2"
   		chmod 400 /etc/postfix/certs/*.*
   		# /etc/postfix/master.cf
-  		postconf -M submission/inet="submission   inet   n   -   n   -   -   smtpd"
-  		postconf -P "submission/inet/syslog_name=postfix/submission"
-  		postconf -P "submission/inet/smtpd_tls_security_level=encrypt"
-  		postconf -P "submission/inet/milter_macro_daemon_name=ORIGINATING"
+  		do_postconf -M submission/inet="submission   inet   n   -   n   -   -   smtpd"
+  		do_postconf -P "submission/inet/syslog_name=postfix/submission"
+  		do_postconf -P "submission/inet/smtpd_tls_security_level=encrypt"
+  		do_postconf -P "submission/inet/milter_macro_daemon_name=ORIGINATING"
   		
 fi
 }
@@ -233,9 +291,9 @@ postfix_enable_sasl_auth() {
 	if [ ! -z "$SMTP_USER" ]; then
 		# /etc/postfix/main.cf
 		info "User and Password supplied! Setting up SASL authentication!"
-		postconf -e smtpd_sasl_auth_enable=yes
-		postconf -e broken_sasl_auth_clients=yes
-		postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
+		do_postconf -e smtpd_sasl_auth_enable=yes
+		do_postconf -e broken_sasl_auth_clients=yes
+		do_postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
 		
 		# smtpd.conf
 		mkdir /etc/postfix/sasl
@@ -272,7 +330,7 @@ postfix_setup_dkim() {
 			for domain in ${ALLOWED_SENDER_DOMAINS}; do
 				private_key=/etc/opendkim/keys/${domain}.private
 				if [[ -f "${private_key}" ]]; then
-					info "Key for domain ${emphasis}${domain}${reset} already exists in ${emphasis}${private_key}${reset}. Will not overwrite"
+					info "Key for domain ${emphasis}${domain}${reset} already exists in ${emphasis}${private_key}${reset}. Will not overwrite."
 				else
 					notice "Auto-generating DKIM key for ${emphasis}${domain}${reset} into ${private_key}."
 					(
@@ -283,6 +341,14 @@ postfix_setup_dkim() {
 						sed -i 's/h=rsa-sha256/h=sha256/' ${domain_dkim_selector}.txt
 						mv -v ${domain_dkim_selector}.private /etc/opendkim/keys/${domain}.private
 						mv -v ${domain_dkim_selector}.txt /etc/opendkim/keys/${domain}.txt
+
+						# Fixes #39
+						chown opendkim:opendkim /etc/opendkim/keys/${domain}.private
+						chmod 400 /etc/opendkim/keys/${domain}.private
+
+						chown opendkim:opendkim /etc/opendkim/keys/${domain}.txt
+						chmod 644 /etc/opendkim/keys/${domain}.txt
+
 					) | sed 's/^/       /'
 					any_generated=1
 				fi
@@ -314,10 +380,10 @@ postfix_setup_dkim() {
 		fi
 		echo -e "        ...using socket $dkim_socket"
 
-		postconf -e "milter_protocol=6"
-		postconf -e "milter_default_action=accept"
-		postconf -e "smtpd_milters=$dkim_socket"
-		postconf -e "non_smtpd_milters=$dkim_socket"
+		do_postconf -e "milter_protocol=6"
+		do_postconf -e "milter_default_action=accept"
+		do_postconf -e "smtpd_milters=$dkim_socket"
+		do_postconf -e "non_smtpd_milters=$dkim_socket"
 
 		echo > /etc/opendkim/TrustedHosts
 		echo > /etc/opendkim/KeyTable
@@ -333,6 +399,13 @@ postfix_setup_dkim() {
 				if [ -f $private_key ]; then
 					domain_dkim_selector="$(get_dkim_selector "${domain}")"
 					echo -e "        ...for domain ${emphasis}${domain}${reset} (selector: ${emphasis}${domain_dkim_selector}${reset})"
+					if ! su opendkim -s /bin/bash -c 'cat /etc/opendkim/keys/example.org.private' > /dev/null 2>&1; then
+						echo -e "        ...trying to reown ${emphasis}${private_key}${reset} as it's not readable by OpenDKIM..."
+						# Fixes #39
+						chown opendkim:opendkim "${private_key}"
+						chmod u+r "${private_key}"
+					fi
+
 					echo "${domain_dkim_selector}._domainkey.${domain} ${domain}:${domain_dkim_selector}:${private_key}" >> /etc/opendkim/KeyTable
 					echo "*@${domain} ${domain_dkim_selector}._domainkey.${domain}" >> /etc/opendkim/SigningTable
 				else
@@ -342,8 +415,8 @@ postfix_setup_dkim() {
 		fi
 	else
 		info "No DKIM keys found, will not use DKIM."
-		postconf -# smtpd_milters
-		postconf -# non_smtpd_milters
+		do_postconf -# smtpd_milters
+		do_postconf -# non_smtpd_milters
 	fi
 }
 
@@ -385,10 +458,10 @@ postfix_custom_commands() {
 		value="${!setting}"
 		if [ -n "${value}" ]; then
 			info "Applying custom postfix setting: ${emphasis}${key}=${value}${reset}"
-			postconf -e "${key}=${value}"
+			do_postconf -e "${key}=${value}"
 		else
 			info "Deleting custom postfix setting: ${emphasis}${key}${reset}"
-			postconf -# "${key}"
+			do_postconf -# "${key}"
 		fi
 	done
 }
@@ -408,4 +481,12 @@ execute_post_init_scripts() {
 			esac
 		done
 	fi
+}
+
+unset_sensible_variables() {
+	unset RELAYHOST_PASSWORD
+	unset XOAUTH2_CLIENT_ID
+	unset XOAUTH2_SECRET
+	unset XOAUTH2_INITIAL_ACCESS_TOKEN
+	unset XOAUTH2_INITIAL_REFRESH_TOKEN
 }

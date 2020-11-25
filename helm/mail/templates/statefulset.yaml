@@ -1,0 +1,114 @@
+{{- $chart := "mail" -}}
+{{- $fullName := include (print $chart ".fullname") . -}}
+{{- $labels := include (print $chart ".labels") . -}}
+{{- $reloaderAnnotations := include (print $chart ".reloader") . -}}
+{{- $selectorLabels := include (print $chart ".selectorLabels") . -}}
+{{- $checksums := include (print $chart ".checksums") . -}}
+{{- $serviceAccountName := include (print $chart ".serviceAccountName") . -}}
+{{- $kind := "StatefulSet" -}}
+apiVersion: apps/v1
+kind: {{ $kind | quote }}
+metadata:
+  name: {{ $fullName | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- $labels | nindent 4 }}
+    {{- with .Values.deployment.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+  annotations:
+    {{- $reloaderAnnotations | nindent 4 }}
+    {{- with .Values.deployment.annotations }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  {{ if eq $kind "StatefulSet" }}serviceName: {{ $fullName }}{{ end }}
+  {{ if eq $kind "Deployment" }}{{ with .Values.strategy }}strategy: {{- toYaml . | nindent 4 }}{{ end }}{{ end }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- $selectorLabels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $selectorLabels | nindent 8 }}
+        {{- with .Values.pod.labels }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        # https://keel.sh/docs/#helm-same-tag-force-updates
+        # Current consensus on a best way to "force" update Helm releases is by modifying your pod spec template by adding:
+        date/deploy-date: {{ now | quote }}
+        {{- $checksums | nindent 8 }}
+        {{- with .Values.pod.annotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ $serviceAccountName | quote }}
+      {{ with .Values.imagePullSecrets }}imagePullSecrets: {{- toYaml . | nindent 8 }}{{- end }}
+      {{ if .Values.schedulerName }}schedulerName: {{ .Values.schedulerName | quote }}{{ end }}
+      {{ if .Values.priorityClassName }}priorityClassName: {{ .Values.priorityClassName | quote }}{{ end }}
+      {{- with .Values.pod.securityContext }}securityContext: {{- toYaml . | nindent 8 }}{{- end }}
+      {{- with .Values.nodeSelector }}nodeSelector: {{- toYaml . | nindent 8 }}{{- end }}
+      {{- with .Values.affinity }}affinity: {{- toYaml . | nindent 8 }} {{- end }}
+      {{- with .Values.tolerations }}tolerations: {{- toYaml . | nindent 8 }} {{- end }}
+
+      {{- if .Values.extraInitContainers }}
+      #
+      # Init containers
+      #
+      initContainers:
+      {{- tpl .Values.extraInitContainers . | nindent 6 }}
+      {{- end }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.container.postfix.securityContext | indent 12 }}
+          ports:
+            - name: smtp
+              containerPort: 587
+              protocol: TCP
+          readinessProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 60
+            command: >
+              sh -c 'printf "EHLO healthcheck\n" | nc localhost 587 | grep -qE "^220.*ESMTP Postfix"'
+          livenessProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 1
+            command: >
+              sh -c 'ps axf | fgrep -v grep | fgrep -q "{supervisord}" && ps axf | fgrep -v grep | fgrep -q "/usr/libexec/postfix/master"'
+          startupProbe:
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 12
+            command: >
+              sh -c 'ps axf | fgrep -v grep | fgrep -q "{supervisord}" && ps axf | fgrep -v grep | fgrep -q "{postfix-script}" && ps axf | fgrep -v grep | fgrep -q "{opendkim.sh}"'
+          envFrom:
+            - configMapRef:
+                name: {{ $fullName | quote }}
+          {{ with .Values.extraEnv }}env: {{- toYaml . | nindent 12 }}{{ end }}
+          volumeMounts:
+            - mountPath: /var/spool/postfix
+              name: {{ $fullName }}
+            {{- if .Values.extraVolumeMounts }}{{- toYaml .Values.extraVolumeMounts | nindent 12 }}{{ end }}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.persistence.enabled }}
+      {{ if .Values.extraVolumes }}volumes: {{- toYaml .Values.extraVolumes | nindent 8 }}{{ end }}
+      {{- else }}
+      volumes:
+        - name: {{ $fullName }}
+          emptyDir: {}
+        {{- if .Values.extraVolumes }}{{- toYaml .Values.extraVolumes | nindent 8 }}{{ end }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ $fullName }}
+        namespace: infrastructure
+      spec:
+        accessModes: {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if (eq "-" .Values.persistence.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: "{{ .Values.persistence.storageClass }}"
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+  {{- end }}

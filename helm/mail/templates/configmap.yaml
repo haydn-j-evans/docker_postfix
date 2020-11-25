@@ -1,0 +1,18 @@
+{{- $chart := "mail" -}}
+{{- $fullName := include (print $chart ".fullname") . -}}
+{{- $labels := include (print $chart ".labels") . -}}
+{{- $files := .Files -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+data:
+  {{- with .Values.config.general }}{{ toYaml . | nindent 2 }}{{ end }}
+  {{- range $key, $value := .Values.config.postfix }}
+  POSTFIX_{{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $key, $value := .Values.config.opendkim }}
+  OPENDKIM_{{ $key }}: {{ $value | quote }}
+  {{- end }}
