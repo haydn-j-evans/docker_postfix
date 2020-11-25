@@ -1,5 +1,4 @@
-FROM alpine:${ALPINE_VERSION}
-LABEL maintaner="Bojan Cekrlic - https://github.com/bokysan/docker-postfix/"
+FROM alpine:latest
 
 # Install supervisor, postfix
 # Install postfix first to get the first account (101)
