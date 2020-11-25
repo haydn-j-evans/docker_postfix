@@ -1,4 +1,4 @@
-# Centogene - Postfix Container
+# Postfix Container
 
 This git repository contains the code to build a fully functional Postfix Container, able to send emails externally.
 
