@@ -144,6 +144,7 @@ postfix_setup_xoauth2_pre_setup() {
   "log_to_syslog_on_failure": "${XOAUTH2_SYSLOG_ON_FAILURE:-no}",
   "log_full_trace_on_failure": "${XOAUTH2_FULL_TRACE:-no}"
 }
+EOF
 
 		if [ -z "$RELAYHOST" ] || [ -z "${RELAYHOST_USERNAME}" ]; then
 			error "You need to specify RELAYHOST and RELAYHOST_USERNAME otherwise Postfix will not run!"
