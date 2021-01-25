@@ -144,7 +144,6 @@ postfix_setup_xoauth2_pre_setup() {
   "log_to_syslog_on_failure": "${XOAUTH2_SYSLOG_ON_FAILURE:-no}",
   "log_full_trace_on_failure": "${XOAUTH2_FULL_TRACE:-no}"
 }
-EOF
 
 		if [ -z "$RELAYHOST" ] || [ -z "${RELAYHOST_USERNAME}" ]; then
 			error "You need to specify RELAYHOST and RELAYHOST_USERNAME otherwise Postfix will not run!"
@@ -296,11 +295,11 @@ postfix_enable_sasl_auth() {
 		do_postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
 		
 		# smtpd.conf
-		cat >> /etc/postfix/sasl/smtpd.conf <<EOF
-		pwcheck_method: auxprop
-		auxprop_plugin: sasldb
-		mech_list: PLAIN LOGIN CRAM-MD5 DIGEST-MD5 NTLM
-		EOF
+cat > /etc/postfix/sasl/smtpd.conf <<EOF
+pwcheck_method: auxprop
+auxprop_plugin: sasldb
+mech_list: PLAIN LOGIN CRAM-MD5 DIGEST-MD5 NTLM
+EOF
 		
 		# sasldb2
 		info "Creating User/Password Database!"
