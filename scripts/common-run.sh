@@ -274,8 +274,8 @@ postfix_enable_tls()  {
   		info "Found certificate and key! Enabling TLS"
 		do_postconf -e smtpd_tls_cert_file=$(find /etc/postfix/certs -iname *.crt)
   		do_postconf -e smtpd_tls_key_file=$(find /etc/postfix/certs -iname *.key)
-    	do_postconf -e smtpd_tls_security_level=encrypt
-    	do_postconf -e smtpd_tls_mandatory_protocols=">=TLSv1.2"
+    		do_postconf -e smtpd_tls_security_level=encrypt
+    		# do_postconf -e smtpd_tls_mandatory_protocols=">=TLSv1.2"
   		chmod 400 /etc/postfix/certs/*.*
   		# /etc/postfix/master.cf
   		do_postconf -M submission/inet="submission   inet   n   -   n   -   -   smtpd"
