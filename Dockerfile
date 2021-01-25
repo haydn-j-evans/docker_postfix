@@ -4,7 +4,7 @@ FROM alpine:latest
 # Install postfix first to get the first account (101)
 # Install opendkim second to get the second account (102)
 RUN        true && \
-           apk add --no-cache --upgrade cyrus-sasl cyrus-sasl-plain cyrus-sasl-login && \
+           apk add --no-cache --upgrade cyrus-sasl cyrus-sasl-login && \
            apk add --no-cache libsasl && \
            apk add --no-cache cyrus-sasl-dev && \
            apk add --no-cache postfix && \
