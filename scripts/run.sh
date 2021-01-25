@@ -17,6 +17,8 @@ postfix_restrict_message_size       # Restrict the size of messages (or set them
 postfix_reject_invalid_helos        # Reject invalid HELOs
 postfix_set_hostname                # Set up host name
 postfix_set_relay_tls_level         # Set TLS level security for relays
+postfix_enable_tls                  # Enables TLS on receiving Certificates if they exist
+postfix_enable_sasl_auth            # Enables a Username and Password if it is defined
 postfix_setup_xoauth2_pre_setup     # (Pre) Setup XOAUTH2 authentication
 postfix_setup_relayhost             # Setup a relay host, if defined
 postfix_setup_xoauth2_post_setup    # (Post) Setup XOAUTH2 autentication
