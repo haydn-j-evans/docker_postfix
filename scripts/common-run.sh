@@ -296,7 +296,6 @@ postfix_enable_sasl_auth() {
 		do_postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
 		
 		# smtpd.conf
-		mkdir /etc/postfix/sasl
 		touch /etc/postfix/sasl/smtpd.conf
 cat >> /etc/postfix/sasl/smtpd.conf <<EOF
 pwcheck_method: auxprop
