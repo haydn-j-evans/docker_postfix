@@ -296,18 +296,18 @@ postfix_enable_sasl_auth() {
 		do_postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
 		
 		# smtpd.conf
-		mkdir /etc/postfix/sasl
-		touch /etc/postfix/sasl/smtpd.conf
-		echo "pwcheck_method: auxprop" >> /etc/postfix/sasl/smtpd.conf
-		echo "auxprop_plugin: sasldb" >> /etc/postfix/sasl/smtpd.conf
-		echo "mech_list: PLAIN LOGIN CRAM-MD5 DIGEST-MD5 NTLM" >> /etc/postfix/sasl/smtpd.conf
+		cat >> /etc/postfix/sasl/smtpd.conf <<EOF
+		pwcheck_method: auxprop
+		auxprop_plugin: sasldb
+		mech_list: PLAIN LOGIN CRAM-MD5 DIGEST-MD5 NTLM
+		EOF
 		
 		# sasldb2
 		info "Creating User/Password Database!"
 		echo $SMTP_USER | tr , \\n > /tmp/passwd
 		while IFS=':' read -r _user _pwd; do
-		echo $_pwd | saslpasswd2 -p -c -u $USER_DOMAIN $_user
-			done < /tmp/passwd
+		  echo $_pwd | saslpasswd2 -p -c -u $USER_DOMAIN $_user
+		done < /tmp/passwd
 		rm /tmp/passwd
 		chown postfix:postfix /etc/sasl2/sasldb2
 		
