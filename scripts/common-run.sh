@@ -293,7 +293,7 @@ postfix_enable_sasl_auth() {
 		info "User and Password supplied! Setting up SASL authentication!"
 		do_postconf -e smtpd_sasl_auth_enable=yes
 		do_postconf -e broken_sasl_auth_clients=yes
-		do_postconf -e smtpd_recipient_restrictions="permit_sasl_authenticated,reject_non_fqdn_recipient, reject_unknown_recipient_domain, check_sender_access hash:$allowed_senders, reject"
+		do_postconf -e smtpd_recipient_restrictions=permit_sasl_authenticated,reject_unauth_destination
 		
 		# smtpd.conf
 		mkdir -p /etc/postfix/sasl/
