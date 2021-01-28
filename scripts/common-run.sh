@@ -294,6 +294,7 @@ postfix_enable_sasl_auth() {
 		do_postconf -e smtpd_sasl_auth_enable=yes
 		do_postconf -e broken_sasl_auth_clients=yes
 		do_postconf -e smtpd_recipient_restrictions=permit_sasl_authenticated,reject_unauth_destination
+		do_postconf -e smtpd_sasl_local_domain = $USER_DOMAIN
 		
 		# smtpd.conf
 		mkdir -p /etc/postfix/sasl/
@@ -312,6 +313,14 @@ EOF
 		done < /tmp/passwd
 		rm /tmp/passwd
 		chown postfix:postfix /etc/sasl2/sasldb2
+		
+		info "Creating controlled sender file!"
+		echo $SMTP_USER | tr , \\n > /tmp/usermap
+		while IFS=':' read -r _user _pwd; do
+		  cat >>/etc/postfix/controlled_envelope_senders <<EOF
+$_user@$ALLOWED_SENDER_DOMAINS         $_user@$USER_DOMAIN
+EOF
+		done < /tmp/usermap
 		
 fi		
 }
